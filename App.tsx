@@ -1,4 +1,4 @@
-// App.tsx - Ulepszona wersja z nowoczesnym designem
+
 import React, { useState, useEffect } from 'react';
 import {
     View,
