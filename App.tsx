@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import {
     View,
@@ -22,6 +21,14 @@ import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 
 // Typy
+interface CVFile {
+    id: string;
+    name: string;
+    fileName: string;
+    content: string;
+    createdAt: number;
+}
+
 interface Advertisement {
     id: string;
     imageUri: string;
@@ -30,7 +37,7 @@ interface Advertisement {
     createdAt: number;
 }
 
-type Screen = 'Home' | 'Add' | 'Details';
+type Screen = 'Home' | 'Add' | 'Details' | 'CVList' | 'CVDetails' | 'AddCV';
 
 // Nowoczesna paleta kolorów
 const COLORS = {
@@ -121,6 +128,8 @@ export default function App() {
     const [currentScreen, setCurrentScreen] = useState<Screen>('Home');
     const [advertisements, setAdvertisements] = useState<Advertisement[]>([]);
     const [selectedAd, setSelectedAd] = useState<Advertisement | null>(null);
+    const [cvFiles, setCVFiles] = useState<CVFile[]>([]);
+    const [selectedCV, setSelectedCV] = useState<CVFile | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -142,6 +151,10 @@ export default function App() {
             const stored = await AsyncStorage.getItem('advertisements');
             if (stored) {
                 setAdvertisements(JSON.parse(stored));
+            }
+            const storedCVs = await AsyncStorage.getItem('cvFiles');
+            if (storedCVs) {
+                setCVFiles(JSON.parse(storedCVs));
             }
         } catch (error) {
             console.error('Błąd ładowania danych:', error);
@@ -194,6 +207,55 @@ export default function App() {
         );
     };
 
+    const saveCVFiles = async (cvs: CVFile[]) => {
+        try {
+            await AsyncStorage.setItem('cvFiles', JSON.stringify(cvs));
+            setCVFiles(cvs);
+        } catch (error) {
+            console.error('Błąd zapisywania CV:', error);
+            Alert.alert('Błąd', 'Nie udało się zapisać CV');
+        }
+    };
+
+    const addCVFile = async (name: string, fileName: string, content: string) => {
+        const newCV: CVFile = {
+            id: Date.now().toString(),
+            name,
+            fileName,
+            content,
+            createdAt: Date.now()
+        };
+        const updatedCVs = [newCV, ...cvFiles];
+        await saveCVFiles(updatedCVs);
+        setCurrentScreen('CVList');
+        Alert.alert('✅ Sukces', 'CV zostało dodane');
+    };
+
+    const deleteCVFile = async (id: string) => {
+        Alert.alert(
+            '🗑️ Potwierdź usunięcie',
+            'Czy na pewno chcesz usunąć to CV?',
+            [
+                { text: 'Anuluj', style: 'cancel' },
+                {
+                    text: 'Usuń',
+                    style: 'destructive',
+                    onPress: async () => {
+                        const updatedCVs = cvFiles.filter(cv => cv.id !== id);
+                        await saveCVFiles(updatedCVs);
+                        setCurrentScreen('CVList');
+                        Alert.alert('✅ Usunięto', 'CV zostało usunięte');
+                    }
+                }
+            ]
+        );
+    };
+
+    const openCVDetails = (cv: CVFile) => {
+        setSelectedCV(cv);
+        setCurrentScreen('CVDetails');
+    };
+
     const openDetails = (ad: Advertisement) => {
         setSelectedAd(ad);
         setCurrentScreen('Details');
@@ -243,11 +305,17 @@ export default function App() {
                     end={{ x: 1, y: 1 }}
                     style={styles.headerGradient}
                 >
-                    <View style={styles.header}>
-                        <View>
-                            <Text style={styles.headerTitle}>CV Tracker</Text>
-                            <Text style={styles.headerSubtitle}>Zarządzaj swoimi aplikacjami</Text>
-                        </View>
+                    <View>
+                        <Text style={styles.headerTitle}>CV Tracker</Text>
+                        <Text style={styles.headerSubtitle}>Zarządzaj swoimi aplikacjami</Text>
+                    </View>
+                    <View style={styles.headerButtons}>
+                        <TouchableOpacity
+                            style={styles.cvButton}
+                            onPress={() => setCurrentScreen('CVList')}
+                        >
+                            <Text style={styles.cvButtonIcon}>📄</Text>
+                        </TouchableOpacity>
                         <TouchableOpacity
                             style={styles.addButton}
                             onPress={handleAddPress}
@@ -587,12 +655,364 @@ export default function App() {
         );
     };
 
+    // Ekran listy CV
+    const CVListScreen = () => {
+        const [searchQuery, setSearchQuery] = useState<string>('');
+
+        const filteredCVs = cvFiles.filter(cv => {
+            if (!searchQuery.trim()) return true;
+            const query = searchQuery.toLowerCase();
+            return cv.name.toLowerCase().includes(query) ||
+                cv.fileName.toLowerCase().includes(query);
+        });
+
+        return (
+            <SafeAreaView style={styles.container}>
+                <LinearGradient
+                    colors={[COLORS.primary, COLORS.primaryDark]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.headerGradient}
+                >
+                    <View style={styles.header}>
+                        <TouchableOpacity
+                            style={styles.backButton}
+                            onPress={() => setCurrentScreen('Home')}
+                        >
+                            <Text style={styles.backButtonText}>← Wróć</Text>
+                        </TouchableOpacity>
+                        <Text style={styles.headerTitle}>Moje CV</Text>
+                        <TouchableOpacity
+                            style={styles.addButton}
+                            onPress={() => setCurrentScreen('AddCV')}
+                        >
+                            <Text style={styles.addButtonIcon}>+</Text>
+                        </TouchableOpacity>
+                    </View>
+                </LinearGradient>
+
+                <View style={styles.searchWrapper}>
+                    <View style={styles.searchContainer}>
+                        <Text style={styles.searchIcon}>🔍</Text>
+                        <TextInput
+                            style={styles.searchInput}
+                            placeholder="Szukaj CV..."
+                            placeholderTextColor={COLORS.textLight}
+                            value={searchQuery}
+                            onChangeText={setSearchQuery}
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                        />
+                        {searchQuery.length > 0 && (
+                            <TouchableOpacity
+                                style={styles.clearButton}
+                                onPress={() => setSearchQuery('')}
+                            >
+                                <Text style={styles.clearButtonText}>✕</Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
+                </View>
+
+                {cvFiles.length === 0 ? (
+                    <View style={styles.centerContainer}>
+                        <Text style={styles.emptyIcon}>📄</Text>
+                        <Text style={styles.emptyText}>Brak zapisanych CV</Text>
+                        <Text style={styles.emptySubtext}>
+                            Kliknij przycisk "+" aby dodać pierwsze CV
+                        </Text>
+                    </View>
+                ) : filteredCVs.length === 0 ? (
+                    <View style={styles.centerContainer}>
+                        <Text style={styles.emptyIcon}>🔍</Text>
+                        <Text style={styles.emptyText}>Brak wyników</Text>
+                        <Text style={styles.emptySubtext}>
+                            Nie znaleziono CV dla "{searchQuery}"
+                        </Text>
+                    </View>
+                ) : (
+                    <FlatList
+                        data={filteredCVs}
+                        keyExtractor={(item) => item.id}
+                        contentContainerStyle={styles.listContainer}
+                        renderItem={({ item }) => (
+                            <TouchableOpacity
+                                style={styles.cvCard}
+                                onPress={() => openCVDetails(item)}
+                                activeOpacity={0.7}
+                            >
+                                <View style={styles.cvCardIcon}>
+                                    <Text style={styles.cvCardIconText}>📄</Text>
+                                </View>
+                                <View style={styles.cvCardInfo}>
+                                    <Text style={styles.cvCardName} numberOfLines={1}>
+                                        {item.name}
+                                    </Text>
+                                    <Text style={styles.cvCardFileName} numberOfLines={1}>
+                                        {item.fileName}
+                                    </Text>
+                                    <Text style={styles.cvCardDate}>
+                                        {new Date(item.createdAt).toLocaleDateString('pl-PL')}
+                                    </Text>
+                                </View>
+                                <Text style={styles.cvCardArrow}>›</Text>
+                            </TouchableOpacity>
+                        )}
+                    />
+                )}
+            </SafeAreaView>
+        );
+    };
+
+    // Ekran dodawania CV
+    const AddCVScreen = () => {
+        const [cvName, setCVName] = useState<string>('');
+        const [cvContent, setCVContent] = useState<string>('');
+        const [fileName, setFileName] = useState<string>('');
+
+        const handlePickDocument = async () => {
+            try {
+                const result = await ImagePicker.launchImageLibraryAsync({
+                    mediaTypes: ImagePicker.MediaTypeOptions.All,
+                    allowsEditing: false,
+                });
+
+                if (!result.canceled && result.assets && result.assets.length > 0) {
+                    const uri = result.assets[0].uri;
+                    const name = uri.split('/').pop() || 'cv.txt';
+                    setFileName(name);
+
+                    // Wczytaj zawartość pliku
+                    const response = await fetch(uri);
+                    const text = await response.text();
+                    setCVContent(text);
+                }
+            } catch (error) {
+                console.error('Błąd wyboru pliku:', error);
+                Alert.alert('Błąd', 'Nie udało się wczytać pliku. Możesz wkleić treść CV ręcznie.');
+            }
+        };
+
+        const handleSave = () => {
+            if (!cvName.trim()) {
+                Alert.alert('⚠️ Błąd', 'Wpisz nazwę CV (np. nazwę firmy)');
+                return;
+            }
+            if (!cvContent.trim()) {
+                Alert.alert('⚠️ Błąd', 'CV nie może być puste');
+                return;
+            }
+            const finalFileName = fileName || 'Wklejone CV';
+            addCVFile(cvName.trim(), finalFileName, cvContent.trim());
+        };
+
+        return (
+            <SafeAreaView style={styles.container}>
+                <LinearGradient
+                    colors={[COLORS.primary, COLORS.primaryDark]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.headerGradient}
+                >
+                    <View style={styles.header}>
+                        <TouchableOpacity
+                            style={styles.backButton}
+                            onPress={() => setCurrentScreen('CVList')}
+                        >
+                            <Text style={styles.backButtonText}>← Wróć</Text>
+                        </TouchableOpacity>
+                        <Text style={styles.headerTitle}>Nowe CV</Text>
+                        <View style={{ width: 60 }} />
+                    </View>
+                </LinearGradient>
+
+                <ScrollView style={styles.formContainer}>
+                    <View style={styles.formSection}>
+                        <Text style={styles.label}>
+                            <Text style={styles.labelIcon}>🏢</Text> Nazwa CV (kontekst)
+                        </Text>
+                        <View style={styles.inputContainer}>
+                            <TextInput
+                                style={styles.textInput}
+                                placeholder="Np. Google, Microsoft, Startup XYZ..."
+                                placeholderTextColor={COLORS.textLight}
+                                value={cvName}
+                                onChangeText={setCVName}
+                            />
+                        </View>
+                    </View>
+
+                    <View style={styles.formSection}>
+                        <Text style={styles.label}>
+                            <Text style={styles.labelIcon}>📄</Text> Plik CV
+                        </Text>
+                        <TouchableOpacity
+                            style={styles.documentPicker}
+                            onPress={handlePickDocument}
+                        >
+                            <View style={styles.documentPickerContent}>
+                                <Text style={styles.documentPickerIcon}>📁</Text>
+                                <Text style={styles.documentPickerText}>
+                                    {fileName || 'Wybierz plik'}
+                                </Text>
+                            </View>
+                        </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.formSection}>
+                        <Text style={styles.label}>
+                            <Text style={styles.labelIcon}>📝</Text> Treść CV
+                        </Text>
+                        <View style={styles.inputContainer}>
+                            <TextInput
+                                style={[styles.textInput, styles.cvTextInput]}
+                                placeholder="Wklej lub wpisz treść swojego CV..."
+                                placeholderTextColor={COLORS.textLight}
+                                value={cvContent}
+                                onChangeText={setCVContent}
+                                multiline
+                                numberOfLines={15}
+                                textAlignVertical="top"
+                            />
+                        </View>
+                        <Text style={styles.cvHint}>
+                            💡 Możesz skopiować treść z dokumentu tekstowego
+                        </Text>
+                    </View>
+
+                    <TouchableOpacity
+                        style={styles.saveButton}
+                        onPress={handleSave}
+                        activeOpacity={0.8}
+                    >
+                        <LinearGradient
+                            colors={[COLORS.success, '#059669']}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 0 }}
+                            style={styles.saveButtonGradient}
+                        >
+                            <Text style={styles.saveButtonText}>✓ Zapisz CV</Text>
+                        </LinearGradient>
+                    </TouchableOpacity>
+                </ScrollView>
+            </SafeAreaView>
+        );
+    };
+
+    // Ekran szczegółów CV
+    const CVDetailsScreen = () => {
+        if (!selectedCV) return null;
+
+        const handleCopyContent = async () => {
+            try {
+                await navigator.clipboard.writeText(selectedCV.content);
+                Alert.alert('✅ Skopiowano', 'Treść CV została skopiowana do schowka');
+            } catch (error) {
+                Alert.alert('Informacja', 'Zaznacz i skopiuj treść ręcznie');
+            }
+        };
+
+        return (
+            <SafeAreaView style={styles.container}>
+                <LinearGradient
+                    colors={[COLORS.primary, COLORS.primaryDark]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.headerGradient}
+                >
+                    <View style={styles.header}>
+                        <TouchableOpacity
+                            style={styles.backButton}
+                            onPress={() => setCurrentScreen('CVList')}
+                        >
+                            <Text style={styles.backButtonText}>← Wróć</Text>
+                        </TouchableOpacity>
+                        <Text style={styles.headerTitle}>Szczegóły CV</Text>
+                        <TouchableOpacity
+                            style={styles.deleteButtonHeader}
+                            onPress={() => deleteCVFile(selectedCV.id)}
+                        >
+                            <Text style={styles.deleteButtonIcon}>🗑️</Text>
+                        </TouchableOpacity>
+                    </View>
+                </LinearGradient>
+
+                <ScrollView style={styles.detailsContainer}>
+                    <View style={styles.cvDetailsCard}>
+                        <View style={styles.detailsSection}>
+                            <View style={styles.detailsLabelContainer}>
+                                <Text style={styles.detailsLabelIcon}>🏢</Text>
+                                <Text style={styles.detailsLabel}>Nazwa CV</Text>
+                            </View>
+                            <Text style={styles.detailsDescription}>{selectedCV.name}</Text>
+                        </View>
+
+                        <View style={styles.divider} />
+
+                        <View style={styles.detailsSection}>
+                            <View style={styles.detailsLabelContainer}>
+                                <Text style={styles.detailsLabelIcon}>📄</Text>
+                                <Text style={styles.detailsLabel}>Nazwa pliku</Text>
+                            </View>
+                            <Text style={styles.cvFileName}>{selectedCV.fileName}</Text>
+                        </View>
+
+                        <View style={styles.divider} />
+
+                        <View style={styles.detailsSection}>
+                            <View style={styles.detailsLabelContainer}>
+                                <Text style={styles.detailsLabelIcon}>📅</Text>
+                                <Text style={styles.detailsLabel}>Data dodania</Text>
+                            </View>
+                            <Text style={styles.detailsDate}>
+                                {new Date(selectedCV.createdAt).toLocaleString('pl-PL', {
+                                    day: '2-digit',
+                                    month: '2-digit',
+                                    year: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                })}
+                            </Text>
+                        </View>
+                    </View>
+
+                    <View style={styles.cvContentSection}>
+                        <View style={styles.cvContentHeader}>
+                            <Text style={styles.cvContentTitle}>📝 Treść CV</Text>
+                            <TouchableOpacity
+                                style={styles.copyButton}
+                                onPress={handleCopyContent}
+                            >
+                                <Text style={styles.copyButtonText}>📋 Kopiuj</Text>
+                            </TouchableOpacity>
+                        </View>
+                        <ScrollView style={styles.cvContentScroll} nestedScrollEnabled>
+                            <Text style={styles.cvContentText} selectable>
+                                {selectedCV.content}
+                            </Text>
+                        </ScrollView>
+                    </View>
+
+                    <TouchableOpacity
+                        style={styles.deleteButton}
+                        onPress={() => deleteCVFile(selectedCV.id)}
+                    >
+                        <Text style={styles.deleteButtonText}>🗑️ Usuń CV</Text>
+                    </TouchableOpacity>
+                </ScrollView>
+            </SafeAreaView>
+        );
+    };
+
     return (
         <>
             <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
             {currentScreen === 'Home' && <HomeScreen />}
             {currentScreen === 'Add' && <AddScreen />}
             {currentScreen === 'Details' && <DetailsScreen />}
+            {currentScreen === 'CVList' && <CVListScreen />}
+            {currentScreen === 'AddCV' && <AddCVScreen />}
+            {currentScreen === 'CVDetails' && <CVDetailsScreen />}
         </>
     );
 }
@@ -1036,5 +1456,172 @@ const styles = StyleSheet.create({
         color: COLORS.surface,
         fontWeight: '700',
         letterSpacing: 0.5
+    },
+    headerButtons: {
+        flexDirection: 'row',
+        gap: 12
+    },
+    cvButton: {
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: 'rgba(255, 255, 255, 0.3)'
+    },
+    cvButtonIcon: {
+        fontSize: 24
+    },
+    cvCard: {
+        backgroundColor: COLORS.surface,
+        borderRadius: 16,
+        marginBottom: 12,
+        padding: 16,
+        flexDirection: 'row',
+        alignItems: 'center',
+        shadowColor: COLORS.shadow,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 1,
+        shadowRadius: 8,
+        elevation: 3,
+        borderWidth: 1,
+        borderColor: COLORS.border
+    },
+    cvCardIcon: {
+        width: 56,
+        height: 56,
+        borderRadius: 12,
+        backgroundColor: COLORS.background,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 16
+    },
+    cvCardIconText: {
+        fontSize: 28
+    },
+    cvCardInfo: {
+        flex: 1
+    },
+    cvCardName: {
+        fontSize: 17,
+        fontWeight: '600',
+        color: COLORS.text,
+        marginBottom: 4
+    },
+    cvCardFileName: {
+        fontSize: 14,
+        color: COLORS.textSecondary,
+        marginBottom: 4
+    },
+    cvCardDate: {
+        fontSize: 12,
+        color: COLORS.textLight
+    },
+    cvCardArrow: {
+        fontSize: 32,
+        color: COLORS.textLight,
+        marginLeft: 8
+    },
+    documentPicker: {
+        backgroundColor: COLORS.surface,
+        borderRadius: 16,
+        borderWidth: 2,
+        borderColor: COLORS.border,
+        borderStyle: 'dashed',
+        padding: 20
+    },
+    documentPickerContent: {
+        alignItems: 'center'
+    },
+    documentPickerIcon: {
+        fontSize: 48,
+        marginBottom: 12
+    },
+    documentPickerText: {
+        fontSize: 15,
+        color: COLORS.textSecondary,
+        fontWeight: '500'
+    },
+    cvTextInput: {
+        minHeight: 300,
+        fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+        fontSize: 13
+    },
+    cvHint: {
+        fontSize: 13,
+        color: COLORS.textSecondary,
+        marginTop: 8,
+        fontStyle: 'italic'
+    },
+    cvDetailsCard: {
+        backgroundColor: COLORS.surface,
+        margin: 16,
+        borderRadius: 24,
+        padding: 20,
+        shadowColor: COLORS.shadow,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 12,
+        elevation: 6,
+        borderWidth: 1,
+        borderColor: COLORS.border
+    },
+    cvFileName: {
+        fontSize: 15,
+        color: COLORS.text,
+        fontWeight: '500',
+        backgroundColor: COLORS.background,
+        padding: 12,
+        borderRadius: 12
+    },
+    cvContentSection: {
+        backgroundColor: COLORS.surface,
+        margin: 16,
+        marginTop: 0,
+        borderRadius: 20,
+        padding: 16,
+        shadowColor: COLORS.shadow,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 1,
+        shadowRadius: 8,
+        elevation: 4,
+        borderWidth: 1,
+        borderColor: COLORS.border
+    },
+    cvContentHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 16
+    },
+    cvContentTitle: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: COLORS.text
+    },
+    copyButton: {
+        backgroundColor: COLORS.primary,
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 12
+    },
+    copyButtonText: {
+        color: COLORS.surface,
+        fontSize: 14,
+        fontWeight: '600'
+    },
+    cvContentScroll: {
+        maxHeight: 400,
+        backgroundColor: COLORS.background,
+        borderRadius: 12,
+        padding: 12
+    },
+    cvContentText: {
+        fontSize: 13,
+        color: COLORS.text,
+        lineHeight: 20,
+        fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace'
     }
 });
